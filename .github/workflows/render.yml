@@ -1,0 +1,66 @@
+name: 🎬 Render Video
+
+on:
+  push:
+    paths:
+      - "public/**"
+      - "src/**"
+  workflow_dispatch:
+    inputs:
+      composition:
+        description: "Composition ID to render"
+        default: "Main"
+        required: false
+
+concurrency:
+  group: render-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 🔧 Install dependencies
+        run: npm ci
+
+      - name: ✅ Validate assets
+        run: node scripts/prepare.mjs
+
+      - name: 🎬 Render video
+        run: |
+          npx remotion render \
+            ${{ github.event.inputs.composition || 'Main' }} \
+            out/final.mp4 \
+            --concurrency=2 \
+            --log=verbose
+
+      - name: 📤 Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-video-${{ github.sha }}
+          path: out/final.mp4
+          retention-days: 14
+
+      - name: 📊 Summary
+        run: |
+          SIZE=$(du -sh out/final.mp4 | cut -f1)
+          echo "### 🎬 Video Rendered!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| File size | $SIZE |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Composition | ${{ github.event.inputs.composition || 'Main' }} |" >> $GITHUB_STEP_SUMMARY
